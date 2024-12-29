@@ -1,0 +1,98 @@
+using System.Collections.Generic;
+using System.Data.SqlClient;
+ 
+namespace MAUI_test_app
+{
+    internal class Recipe
+    {
+        public int Id { get; private set; }
+        public string Title { get; private set; }
+        public string Description { get; private set; }
+        public List<List<string>> Ingredients { get; private set; }
+        public int Kcal { get; private set; }
+        public int Protein { get; private set; }
+        public int Carbs { get; private set; }
+        public int Fat { get; private set; }
+ 
+        private readonly string connectionString = Preferences.Default.Get("serverLoc", "Unknown");
+ 
+        public Recipe(int id)
+        {
+            Ingredients = new List<List<string>>();
+ 
+            using (var connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+ 
+                // Get recipe data
+                string query = $"SELECT ID_Recipe, Name, Instruction FROM Recipes WHERE ID_Recipe = {id}";
+                using (var cmd = new SqlCommand(query, connection))
+                {
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            Id = reader.GetInt32(0);
+                            Title = reader.GetString(1);
+                            Description = reader.GetString(2);
+                        }
+                    }
+                }
+ 
+                // Get ingredients data
+                query = $"SELECT Ingredients.IngName, IngCount, IngUnit FROM IngredientsToIngredients JOIN Ingredients ON IngredientsToIngredients.Id_Ingredients = Ingredients.Id_Ingredient WHERE IngredientsToIngredients.Id_Rec = {id}";
+                using (var cmd = new SqlCommand(query, connection))
+                {
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            Ingredients.Add(new List<string>() { reader.GetString(0), reader.GetInt32(1).ToString(), reader.GetString(2) });
+                        }
+                    }
+                }
+ 
+                // Get composition data
+                query = $"SELECT (SELECT Kcals.kcal_value FROM Composition JOIN Kcals ON Composition.ID_Kcal = Kcals.ID_Kcal WHERE Composition.Id_Rec = {id}) AS kcal, (SELECT Proteins.g_value FROM Composition JOIN Proteins ON Composition.ID_Prt = Proteins.ID_Protein WHERE Composition.Id_Rec = {id}) AS prot, (SELECT Carbs.g_value FROM Composition JOIN Carbs ON Composition.ID_Crb = Carbs.ID_Carb WHERE Composition.Id_Rec = {id}) AS carbs, (SELECT Fats.g_value FROM Composition JOIN Fats ON Composition.ID_Crb = Fats.ID_Fat WHERE Composition.Id_Rec = {id}) AS fat FROM Composition WHERE ID_Rec = {id}";
+                using (var cmd = new SqlCommand(query, connection))
+                {
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            Kcal = reader.GetInt32(0);
+                            Protein = reader.GetInt32(1);
+                            Carbs = reader.GetInt32(2);
+                            Fat = reader.GetInt32(3);
+                        }
+                    }
+                }
+            }
+        }
+ 
+        public List<string> ShowIngredients()
+        {
+            var ingredientsList = new List<string>();
+            foreach (var ingredient in Ingredients)
+            {
+                ingredientsList.Add(string.Join(" ", ingredient));
+            }
+            return ingredientsList;
+        }
+ 
+        public string ShowCustomComposition(int userKcal)
+        {
+            double multiplier = (double)userKcal / (double)Kcal;
+            return $"kcal: {Math.Round(Kcal * multiplier, 2)}, Protein: {Math.Round(Protein * multiplier, 2)}, Carbs: {Math.Round(Carbs * multiplier, 2)}, Fat: {Math.Round(Fat * multiplier, 2)}";
+        }
+ 
+        public List<string> ShowCustomIngredients(int userKcal)
+        {
+            double multiplier = (double)userKcal / (double)Kcal;
+            var ingredientsList = new List<string>();
+            foreach (var ingredient in Ingredients)
+            {
+                string ingredientText = string.Join(" ", ingredient.Take(2));
+                if (ingredient.Count > 2)
+                {
+                    ingredientText += $" {Math.Round(double.Parse(ingredient[1]) * multiplier
